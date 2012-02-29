@@ -1,4 +1,4 @@
-﻿/*
+/*
 	Copyright 2011 MCForge
 		
 	Dual-licensed under the	Educational Community License, Version 2.0 and
@@ -15,7 +15,7 @@
 	or implied. See the Licenses for the specific language governing
 	permissions and limitations under the Licenses.
 */
-//Thanks to the /nyan creators...
+//Slightly changed version of Sinjai's /nyan command
 using System;
 using System.IO;
 using System.Net;
@@ -50,12 +50,14 @@ namespace MCForge.Commands
                     return;
                 }
             }
+            p.show = false;
             Command.all.Find("retrieve").Use(p, "pumpkin");
             Command.all.Find("paste").Use(p, "");
             ushort[] loc = p.getLoc(false);
             ushort loc0 = (ushort)(loc[0] + 3);
             ushort loc2 = (ushort)(loc[2] - 8);
             Command.all.Find("click").Use(p, loc0 + " " + loc[1] + " " + loc2);
+            p.show = true;
         }
         public override void Help(Player p)
         {
