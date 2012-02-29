@@ -65,7 +65,7 @@ namespace MCForge.Commands
 
             p.lastCMD = "click";
             p.manualChange(click[0], click[1], click[2], 0, Block.rock);
-            Player.SendMessage(p, "Clicked &b(" + click[0] + ", " + click[1] + ", " + click[2] + ")");
+            if (p.show) { Player.SendMessage(p, "Clicked &b(" + click[0] + ", " + click[1] + ", " + click[2] + ")"); }
         }
         public override void Help(Player p)
         {
