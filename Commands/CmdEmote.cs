@@ -20,9 +20,9 @@ using System;
 
 namespace MCForge.Commands
 {
-    public class CmdEmote : Command
+    public class CmdEmoteParsing : Command
     {
-        public override string name { get { return "emote"; } }
+        public override string name { get { return "emoteparsing"; } }
         public override string shortcut { get { return "<3"; } }
         public override string type { get { return "other"; } }
         public override bool museumUsable { get { return true; } }
