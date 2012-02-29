@@ -1,4 +1,4 @@
-﻿/*
+/*
 	Copyright 2011 MCForge
 		
 	Dual-licensed under the	Educational Community License, Version 2.0 and
@@ -51,10 +51,12 @@ namespace MCForge.Commands
                     return;
                 }
             }
+            p.show = false;
             Command.all.Find("retrieve").Use(p, "nyancat");
             Command.all.Find("paste").Use(p, "");
             ushort[] loc = p.getLoc(false);
             Command.all.Find("click").Use(p, loc[0] + " " + loc[1] + " " + loc[2]);
+            p.show = true;
         }
         public override void Help(Player p)
         {
