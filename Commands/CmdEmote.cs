@@ -39,7 +39,7 @@ namespace MCForge.Commands
         }
         public override void Help(Player p)
         {
-            Player.SendMessage(p, "/emote - Enables or disables emoticon parsing");
+            Player.SendMessage(p, "/EmoteParsing - Enables or disables emoticon parsing");
         }
     }
 }
