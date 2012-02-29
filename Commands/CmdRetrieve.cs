@@ -1,4 +1,4 @@
-﻿/*
+/*
 	Copyright 2011 MCForge
 		
 	Dual-licensed under the	Educational Community License, Version 2.0 and
@@ -156,7 +156,7 @@ namespace MCForge.Commands
                                 }
                                 else readFirst = true;
                             }
-                            Player.SendMessage(p, "&f" + message + Server.DefaultColor + " has been placed copybuffer.  Paste away!");
+                            if (p.show) { Player.SendMessage(p, "&f" + message + Server.DefaultColor + " has been placed copybuffer.  Paste away!"); }
                         }
                         else
                         {
