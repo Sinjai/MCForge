@@ -162,6 +162,7 @@ namespace MCForge
         public string voicestring = "";
 
         public int grieferStoneWarn = 0;
+        public bool show = true; //Used for /nyan and /pumpkin
 
         //CTF
         public Team team;
