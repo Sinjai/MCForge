@@ -40,7 +40,7 @@ namespace MCForge.Commands
             CatchPos cpos;
             cpos.x = 0; cpos.y = 0; cpos.z = 0; p.blockchangeObject = cpos;
 
-            Player.SendMessage(p, "Place a block in the corner of where you want to paste."); p.ClearBlockchange();
+            if (p.show) { Player.SendMessage(p, "Place a block in the corner of where you want to paste."); p.ClearBlockchange(); }
             p.Blockchange += new Player.BlockchangeEventHandler(Blockchange1);
         }
         public override void Help(Player p)
@@ -82,7 +82,7 @@ namespace MCForge.Commands
                 });
             }
 
-            Player.SendMessage(p, "Pasted " + p.CopyBuffer.Count + " blocks.");
+            if (p.show) { Player.SendMessage(p, "Pasted " + p.CopyBuffer.Count + " blocks."); }
 
             if (p.staticCommands) p.Blockchange += new Player.BlockchangeEventHandler(Blockchange1);
         }
