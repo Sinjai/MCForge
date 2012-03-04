@@ -53,7 +53,7 @@ namespace MCForge.Commands
                         return;
                     	}
                     }
-            if (Server.gcmods.Contains(who.name.ToLower()))
+            if (Server.gcmods.Contains(who.name.ToLower()) && who != p)
             {
                 if (!Server.devs.Contains(p.name.ToLower()))
                 {
