@@ -330,31 +330,17 @@ namespace MCForge
         {
             try
             {
-                Packets = new Queue<Packet>();
-                Stream = new NetworkStream(s);
-                Reader = new BinaryReader(Stream);
                 socket = s;
                 ip = socket.RemoteEndPoint.ToString().Split(':')[0];
-            }
-            catch(Exception e)
-            {
-                Server.ErrorLog(e);
-            }
-
-        }
-        public void Start()
-        {
-            try{
-
-            Server.s.Log(ip + " connected to the server.");
+                Server.s.Log(ip + " connected to the server.");
 
                 for (byte i = 0; i < 128; ++i) bindings[i] = i;
 
-                new Thread(IORead).Start();
-                timespent.Elapsed +=
-                    delegate
+                socket.BeginReceive(tempbuffer, 0, tempbuffer.Length, SocketFlags.None, new AsyncCallback(Receive), this);
+                timespent.Elapsed += delegate
+                {
+                    if (!Loading)
                     {
-                        if (Loading) return;
                         try
                         {
                             int Days = Convert.ToInt32(time.Split(' ')[0]);
@@ -380,34 +366,37 @@ namespace MCForge
                             time = "" + Days + " " + Hours + " " + Minutes + " " + Seconds;
                         }
                         catch { time = "0 0 0 1"; }
-                    };
+                    }
+                };
                 timespent.Start();
                 loginTimer.Elapsed += delegate
                 {
-                    if (Loading) return;
-                    loginTimer.Stop();
-                    if (File.Exists("text/welcome.txt"))
+                    if (!Loading)
                     {
-                        try
+                        loginTimer.Stop();
+                        if (File.Exists("text/welcome.txt"))
                         {
-                            using (StreamReader wm = File.OpenText("text/welcome.txt"))
+                            try
                             {
-                                var welcome = new List<string>();
-                                while (!wm.EndOfStream)
-                                    welcome.Add(wm.ReadLine());
-                                foreach (string w in welcome)
-                                    SendMessage(w);
+                                using (StreamReader wm = File.OpenText("text/welcome.txt"))
+                                {
+                                    List<string> welcome = new List<string>();
+                                    while (!wm.EndOfStream)
+                                        welcome.Add(wm.ReadLine());
+                                    foreach (string w in welcome)
+                                        SendMessage(w);
+                                }
                             }
+                            catch { }
                         }
-                        catch { }
+                        else
+                        {
+                            Server.s.Log("Could not find Welcome.txt. Using default.");
+                            File.WriteAllText("text/welcome.txt", "Welcome to my server!");
+                        }
+                        extraTimer.Start();
+                        loginTimer.Dispose();
                     }
-                    else
-                    {
-                        Server.s.Log("Could not find Welcome.txt. Using default.");
-                        File.WriteAllText("text/welcome.txt", "Welcome to my server!");
-                    }
-                    extraTimer.Start();
-                    loginTimer.Dispose();
                 }; loginTimer.Start();
 
                 pingTimer.Elapsed += delegate { SendPing(); };
@@ -443,7 +432,6 @@ namespace MCForge
                     {
                         if (!Group.Find("Nobody").commands.Contains("award") && !Group.Find("Nobody").commands.Contains("awards") && !Group.Find("Nobody").commands.Contains("awardmod")) SendMessage("You have " + Awards.awardAmount(name) + " awards.");
                     }
-
                     catch { }
                     try
                     {
@@ -504,6 +492,7 @@ namespace MCForge
             catch (Exception e) { Kick("Login failed!"); Server.ErrorLog(e); }
         }
 
+
         public void save()
         {
             string commandString =
@@ -546,96 +535,135 @@ namespace MCForge
         }
 
         #region == INCOMING ==
-
-
-        public enum PacketID : byte
+        static void Receive(IAsyncResult result)
         {
-            WomTextures = 71,
-            Login = 0,
-            BlockChange = 5,
-            Movement = 8,
-            Chat = 13
-
-            //What a mess
-        }
-
-
-        //You like this code mcstorm? i know u do :3
-        void IORead()
-        {
-
-            while (socket != null && socket.Connected)
+            //Server.s.Log(result.AsyncState.ToString());
+            Player p = (Player)result.AsyncState;
+            if (p.disconnected || p.socket == null)
+                return;
+            try
             {
-                try
+                int length = p.socket.EndReceive(result);
+                if (length == 0) { p.Disconnect(); return; }
+
+                byte[] b = new byte[p.buffer.Length + length];
+                Buffer.BlockCopy(p.buffer, 0, b, 0, p.buffer.Length);
+                Buffer.BlockCopy(p.tempbuffer, 0, b, p.buffer.Length, length);
+
+                p.buffer = p.HandleMessage(b);
+                if (p.dontmindme && p.buffer.Length == 0)
                 {
-                    if (!Stream.DataAvailable)
-                    {
-                        Thread.Sleep(20);
-                        continue;
-                    }
-                    var read = (PacketID)Reader.ReadByte();
-                    switch (read)
-                    {
-                        case PacketID.WomTextures:
-                            level.textures.ServeCfg(this, buffer);
-                            break;
-                        case PacketID.Login:
-                            HandleLogin();
-                            break;
-                        case PacketID.BlockChange:
-                            if (!loggedIn)
-                                goto default;
-                            HandleBlockchange();
-                            break;
-                        case PacketID.Chat:
-
-                            if (!loggedIn)
-                                goto default;
-                            HandleChat();
-                            break;
-                        case PacketID.Movement:
-
-                            if (!loggedIn)
-                                goto default;
-                            HandleInput();
-                            break;
-                        default:
-
-                            if (!dontmindme)
-                                Kick(string.Format("Unhandled message id \"{0}\"!", read));
-                            else
-                                Server.s.Log(Encoding.UTF8.GetString(buffer, 0, buffer.Length));
-                            return;
-
-                    }
-                    Thread.Sleep(20);
-
+                    Server.s.Log("Disconnected");
+                    p.socket.Close();
+                    p.disconnected = true;
+                    return;
                 }
-                catch (SocketException)
-                {
-                    Disconnect();
-                }
-                catch (ObjectDisposedException)
-                {
-                    // Player is no longer connected, socket was closed
-                    // Mark this as disconnected and remove them from active connection list
-                    SaveUndo(this);
-                    if (connections.Contains(this))
-                        connections.Remove(this);
-                    disconnected = true;
-                }
-                catch (Exception e)
-                {
-                    Server.ErrorLog(e);
-                    Kick("Error!");
-                }
-
-
+                if (!p.disconnected)
+                    p.socket.BeginReceive(p.tempbuffer, 0, p.tempbuffer.Length, SocketFlags.None,
+                                          new AsyncCallback(Receive), p);
             }
-            Disconnect();
+            catch (SocketException)
+            {
+                p.Disconnect();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Player is no longer connected, socket was closed
+                // Mark this as disconnected and remove them from active connection list
+                Player.SaveUndo(p);
+                if (connections.Contains(p))
+                    connections.Remove(p);
+                p.disconnected = true;
+            }
+            catch (Exception e)
+            {
+                Server.ErrorLog(e);
+                p.Kick("Error!");
+            }
         }
+        byte[] HandleMessage(byte[] buffer)
+        {
+            try
+            {
+                int length = 0; byte msg = buffer[0];
+                // Get the length of the message by checking the first byte
+                switch (msg)
+                {
+                    //For wom
+                    case (byte)'G':
+                        level.textures.ServeCfg(this, buffer);
+                        return new byte[1];
+                    case 0:
+                        length = 130;
+                        break; // login
+                    case 5:
+                        if (!loggedIn)
+                            goto default;
+                        length = 8;
+                        break; // blockchange
+                    case 8:
+                        if (!loggedIn)
+                            goto default;
+                        length = 9;
+                        break; // input
+                    case 13:
+                        if (!loggedIn)
+                            goto default;
+                        length = 65;
+                        break; // chat
+                    default:
+                        if (!dontmindme)
+                            Kick("Unhandled message id \"" + msg + "\"!");
+                        else
+                            Server.s.Log(Encoding.UTF8.GetString(buffer, 0, buffer.Length));
+                        return new byte[0];
+                }
+                if (buffer.Length > length)
+                {
+                    byte[] message = new byte[length];
+                    Buffer.BlockCopy(buffer, 1, message, 0, length);
 
-        void HandleLogin()
+                    byte[] tempbuffer = new byte[buffer.Length - length - 1];
+                    Buffer.BlockCopy(buffer, length + 1, tempbuffer, 0, buffer.Length - length - 1);
+
+                    buffer = tempbuffer;
+
+                    // Thread thread = null;
+                    switch (msg)
+                    {
+                        case 0:
+                            HandleLogin(message);
+                            break;
+                        case 5:
+                            if (!loggedIn)
+                                break;
+                            HandleBlockchange(message);
+                            break;
+                        case 8:
+                            if (!loggedIn)
+                                break;
+                            HandleInput(message);
+                            break;
+                        case 13:
+                            if (!loggedIn)
+                                break;
+                            HandleChat(message);
+                            break;
+                    }
+                    //thread.Start((object)message);
+                    if (buffer.Length > 0)
+                        buffer = HandleMessage(buffer);
+                    else
+                        return new byte[0];
+                }
+            }
+            catch (Exception e)
+            {
+                Server.ErrorLog(e);
+            }
+            return buffer;
+        }
+        void HandleLogin(byte[] message)
         {
             try
             {
@@ -643,10 +671,10 @@ namespace MCForge
                 if (loggedIn)
                     return;
 
-                byte version = Reader.ReadByte();
-                name = ReadString();
-                string verify = ReadString();
-                Reader.ReadByte(); //idk
+                byte version = message[0];
+                name = enc.GetString(message, 1, 64).Trim();
+                string verify = enc.GetString(message, 65, 32).Trim();
+                byte type = message[129];
                 try
                 {
                     Server.TempBan tBan = Server.tempBans.Find(tB => tB.name.ToLower() == name.ToLower());
@@ -662,7 +690,7 @@ namespace MCForge
                 catch { }
 
                 // Whitelist check.
-                if (Server.useWhitelist && !Server.devs.Contains(name.ToLower()) && !Server.gcmodhasprotection(name.ToLower()))
+                if (Server.useWhitelist && !Server.devs.Contains(name.ToLower()))
                 {
                     if (Server.verify)
                     {
@@ -687,7 +715,7 @@ namespace MCForge
                     }
                 }
 
-                if (Server.PremiumPlayersOnly && !Server.devs.Contains(name.ToLower()) && !Server.gcmodhasprotection(name.ToLower()))
+                if (Server.PremiumPlayersOnly && !Server.devs.Contains(name.ToLower()))
                 {
                     using (WebClient Client = new WebClient())
                     {
@@ -784,7 +812,7 @@ namespace MCForge
                         return;
                     }
                 }
-                if (!Server.gcmodhasprotection(name.ToLower()) && !Server.devs.Contains(name.ToLower()) && !VIP.Find(this))
+                if (!Server.devs.Contains(name.ToLower()) && !VIP.Find(this))
                 {
                     // Check to see how many guests we have
                     if (Player.players.Count >= Server.players && !IPInPrivateRange(ip)) { Kick("Server full!"); return; }
@@ -818,13 +846,16 @@ namespace MCForge
                     }
                 }
 
-                foreach (Player p in players.Where(p => p.name == name))
+                foreach (Player p in players)
                 {
-                    if (Server.verify)
+                    if (p.name == name)
                     {
-                        p.Kick("Someone logged in as you!"); break;
+                        if (Server.verify)
+                        {
+                            p.Kick("Someone logged in as you!"); break;
+                        }
+                        else { Kick("Already logged in!"); return; }
                     }
-                    Kick("Already logged in!"); return;
                 }
 
                 try { left.Remove(name.ToLower()); }
@@ -853,10 +884,13 @@ namespace MCForge
                 bool found = false;
                 if (!ip.StartsWith("127.0.0."))
                 {
-                    foreach (KeyValuePair<string, string> prev in left.Where(prev => prev.Value == ip))
+                    foreach (KeyValuePair<string, string> prev in left)
                     {
-                        found = true;
-                        temp += " " + prev.Key;
+                        if (prev.Value == ip)
+                        {
+                            found = true;
+                            temp += " " + prev.Key;
+                        }
                     }
                     if (found)
                     {
@@ -949,19 +983,6 @@ namespace MCForge
             if (PlayerConnect != null)
                 PlayerConnect(this);
             OnPlayerConnectEvent.Call(this);
-            Server.UpdateGlobalSettings();
-            if (Server.gcmods.Contains(this.name.ToLower()))
-            {
-                if (color == Group.standard.color)
-                {
-                    color = "&f";
-                }
-                if (prefix == "")
-                {
-                    title = "GCMod";
-                }
-                SetPrefix();
-            }
             if (Server.devs.Contains(this.name.ToLower()))
             {
                 if (color == Group.standard.color)
@@ -992,16 +1013,18 @@ namespace MCForge
                 ushort x = (ushort)((0.5 + level.spawnx) * 32);
                 ushort y = (ushort)((1 + level.spawny) * 32);
                 ushort z = (ushort)((0.5 + level.spawnz) * 32);
-                pos = new[] { x, y, z }; rot = new[] { level.rotx, level.roty };
+                pos = new ushort[3] { x, y, z }; rot = new byte[2] { level.rotx, level.roty };
 
                 GlobalSpawn(this, x, y, z, rot[0], rot[1], true);
-                foreach (Player p in players.Where(p => p.level == level && p != this && !p.hidden))
+                foreach (Player p in players)
                 {
-                    SendSpawn(p.id, p.color + p.name, p.pos[0], p.pos[1], p.pos[2], p.rot[0], p.rot[1]);
+                    if (p.level == level && p != this && !p.hidden)
+                        SendSpawn(p.id, p.color + p.name, p.pos[0], p.pos[1], p.pos[2], p.rot[0], p.rot[1]);
                 }
-                foreach (PlayerBot pB in PlayerBot.playerbots.Where(pB => pB.level == level))
+                foreach (PlayerBot pB in PlayerBot.playerbots)
                 {
-                    SendSpawn(pB.id, pB.color + pB.name, pB.pos[0], pB.pos[1], pB.pos[2], pB.rot[0], pB.rot[1]);
+                    if (pB.level == level)
+                        SendSpawn(pB.id, pB.color + pB.name, pB.pos[0], pB.pos[1], pB.pos[2], pB.rot[0], pB.rot[1]);
                 }
             }
             catch (Exception e)
@@ -1012,9 +1035,9 @@ namespace MCForge
 
             Loading = false;
 
-            if (Server.verifyadmins)
+            if (Server.verifyadmins == true)
             {
-                if (group.Permission >= Server.verifyadminsrank)
+                if (this.group.Permission >= Server.verifyadminsrank)
                 {
                     adminpen = true;
                 }
@@ -1028,7 +1051,7 @@ namespace MCForge
             {
                 File.WriteAllText("text/login/" + this.name + ".txt", "joined the server.");
             }
-            if (Server.agreetorulesonentry)
+            if (Server.agreetorulesonentry == true)
             {
                 if (!File.Exists("ranks/agreed.txt"))
                 {
@@ -1046,7 +1069,7 @@ namespace MCForge
             }
             if (this.group.Permission < Server.adminchatperm || Server.adminsjoinsilent == false)
             {
-                if (Server.guestJoinNotify && this.group.Permission <= LevelPermission.Guest)
+                if (Server.guestJoinNotify == true && this.group.Permission <= LevelPermission.Guest)
                 {
                     GlobalChat(this, "&a+ " + this.color + this.prefix + this.name + Server.DefaultColor + " " + File.ReadAllText("text/login/" + this.name + ".txt"), false);
                 }
@@ -1061,7 +1084,7 @@ namespace MCForge
                 this.hidden = true;
                 this.adminchat = true;
             }
-            if (Server.verifyadmins)
+            if (Server.verifyadmins == true)
             {
                 if (this.group.Permission >= Server.verifyadminsrank)
                 {
@@ -1087,7 +1110,6 @@ namespace MCForge
             }
             Server.s.Log(name + " [" + ip + "] has joined the server.");
 
-
             if (Server.zombie.ZombieStatus() != 0) { Player.SendMessage(this, "There is a Zombie Survival game currently in-progress! Join it by typing /g " + Server.zombie.currentLevelName); }
         }
 
@@ -1096,9 +1118,9 @@ namespace MCForge
             prefix = (title == "") ? "" : (titlecolor == "") ? "[" + title + "] " : "[" + titlecolor + title + color + "] ";
         }
 
-        void HandleBlockchange()
+        void HandleBlockchange(byte[] message)
         {
-            byte[] message = Reader.ReadBytes(8);
+            int section = 0;
             try
             {
                 //byte[] message = (byte[])m;
@@ -1107,6 +1129,7 @@ namespace MCForge
                 if (CheckBlockSpam())
                     return;
 
+                section++;
                 ushort x = NTHO(message, 0);
                 ushort y = NTHO(message, 2);
                 ushort z = NTHO(message, 4);
@@ -1146,7 +1169,7 @@ namespace MCForge
             {
                 // Don't ya just love it when the server tattles?
                 GlobalMessageOps(name + " has triggered a block change error");
-                GlobalMessageOps(e.GetType() + ": " + e.Message);
+                GlobalMessageOps(e.GetType().ToString() + ": " + e.Message);
                 Server.ErrorLog(e);
             }
         }
@@ -1178,10 +1201,14 @@ namespace MCForge
                 return;
             }
 
-            if (Server.verifyadmins && adminpen)
+            if (Server.verifyadmins == true)
             {
+                if (this.adminpen == true)
+                {
                     SendBlockchange(x, y, z, b);
-                   SendMessage("&cYou must use &a/pass [Password]&c to verify!");
+                    this.SendMessage("&cYou must use &a/pass [Password]&c to verify!");
+                    return;
+                }
             }
 
             if (Server.ZombieModeOn && (action == 1 || (action == 0 && this.painting)))
@@ -1227,7 +1254,7 @@ namespace MCForge
             //bool test2 = false;
             if (Blockchange != null)
             {
-                if (Blockchange.Method.ToString().IndexOf("AboutBlockchange", System.StringComparison.Ordinal) == -1 && !level.name.Contains("Museum " + Server.DefaultColor))
+                if (Blockchange.Method.ToString().IndexOf("AboutBlockchange") == -1 && !level.name.Contains("Museum " + Server.DefaultColor))
                 {
                     bP.deleted = true;
                     level.blockCache.Add(bP);
@@ -1278,7 +1305,7 @@ namespace MCForge
                 }
             }
 
-            if (b == Block.griefer_stone && group.Permission <= Server.grieferStoneRank && !Server.devs.Contains(name.ToLower()) && !Server.gcmodhasprotection(name.ToLower()))
+            if (b == Block.griefer_stone && group.Permission <= Server.grieferStoneRank && !Server.devs.Contains(name.ToLower()))
             {
                 if (grieferStoneWarn < 1)
                     SendMessage("Do not grief! This is your first warning!");
@@ -1336,7 +1363,7 @@ namespace MCForge
                 if (!deleteMode)
                 {
                     if (Block.portal(b)) { HandlePortal(this, x, y, z, b); return; }
-                    if (Block.mb(b)) { HandleMsgBlock(x, y, z, b); return; }
+                    if (Block.mb(b)) { HandleMsgBlock(this, x, y, z, b); return; }
                 }
 
                 bP.deleted = true;
@@ -1388,7 +1415,7 @@ namespace MCForge
         }
 
 
-        public void HandleMsgBlock(ushort x, ushort y, ushort z, byte b)
+        public void HandleMsgBlock(Player p, ushort x, ushort y, ushort z, byte b)
         {
             try
             {
@@ -1408,7 +1435,8 @@ namespace MCForge
                             string args = string.Join(" ", Message.ToArray());
                             HandleCommand(command, args);
                         }
-                        else SendMessage(message);
+                        else
+                            Player.SendMessage(p, message);
 
                         prevMsg = message;
                     }
@@ -1420,7 +1448,7 @@ namespace MCForge
                 }
                 Messages.Dispose();
             }
-            catch { SendMessage("No message was stored."); return; }
+            catch { Player.SendMessage(p, "No message was stored."); return; }
         }
 
         private bool checkOp()
@@ -1548,12 +1576,12 @@ namespace MCForge
                     break;
 
                 case Block.c4det:
-                    Level.C4.BlowUp(new[] { x, y, z }, level);
+                    Level.C4.BlowUp(new ushort[] { x, y, z }, level);
                     level.Blockchange(x, y, z, Block.air);
                     break;
 
                 default:
-                    level.Blockchange(this, x, y, z, Block.air);
+                    level.Blockchange(this, x, y, z, (byte)(Block.air));
                     break;
             }
             if ((level.physics == 0 || level.physics == 5) && level.GetTile(x, (ushort)(y - 1), z) == 3) level.Blockchange(this, x, (ushort)(y - 1), z, 2);
@@ -1615,7 +1643,7 @@ namespace MCForge
             }
         }
 
-        void HandleInput()
+        void HandleInput(object m)
         {
             if (!loggedIn || trainGrab || following != "" || frozen)
                 return;
@@ -1624,10 +1652,13 @@ namespace MCForge
 unchecked { this.SendPos((byte)-1, (ushort)(clippos[0] - 18), (ushort)(clippos[1] - 18), (ushort)(clippos[2] - 18), cliprot[0], cliprot[1]); }
 return;
 }*/
-            byte[] message = Reader.ReadBytes(9);
-            if (incountdown && CountdownGame.gamestatus == CountdownGameStatus.InProgress && CountdownGame.freezemode)
+
+            byte[] message = (byte[])m;
+            byte thisid = message[0];
+
+            if (this.incountdown == true && CountdownGame.gamestatus == CountdownGameStatus.InProgress && CountdownGame.freezemode == true)
             {
-                if (countdownsettemps)
+                if (this.countdownsettemps == true)
                 {
                     countdowntempx = NTHO(message, 1);
                     Thread.Sleep(100);
@@ -1644,7 +1675,7 @@ return;
                 rot = new byte[2] { rotx, roty };
                 if (countdowntempx != NTHO(message, 1) || countdowntempz != NTHO(message, 5))
                 {
-                    unchecked { SendPos((byte)-1, pos[0], pos[1], pos[2], rot[0], rot[1]); }
+                    unchecked { this.SendPos((byte)-1, pos[0], pos[1], pos[2], rot[0], rot[1]); }
                 }
             }
             else
@@ -1653,14 +1684,14 @@ return;
                 ushort y = NTHO(message, 3);
                 ushort z = NTHO(message, 5);
 
-                if (!referee && Server.noRespawn && Server.ZombieModeOn)
+                if (!this.referee && Server.noRespawn && Server.ZombieModeOn)
                 {
-                    if (pos[0] >= x + 70 || pos[0] <= x - 70)
+                    if (this.pos[0] >= x + 70 || this.pos[0] <= x - 70)
                     {
                         unchecked { SendPos((byte)-1, pos[0], pos[1], pos[2], rot[0], rot[1]); }
                         return;
                     }
-                    if (pos[2] >= z + 70 || pos[2] <= z - 70)
+                    if (this.pos[2] >= z + 70 || this.pos[2] <= z - 70)
                     {
                         unchecked { SendPos((byte)-1, pos[0], pos[1], pos[2], rot[0], rot[1]); }
                         return;
@@ -1678,8 +1709,8 @@ return;
                 }
                 byte rotx = message[7];
                 byte roty = message[8];
-                pos = new[] { x, y, z };
-                rot = new[] { rotx, roty };
+                pos = new ushort[3] { x, y, z };
+                rot = new byte[2] { rotx, roty };
                 /*if (!CheckIfInsideBlock())
 {
 clippos = pos;
@@ -1700,14 +1731,17 @@ cliprot = rot;
                     deathBlock = Block.air;
                     return;
                 }
-                if (deathCount > level.fall && deathBlock == Block.air)
+                else
                 {
-                    HandleDeath(deathBlock);
-                    deathCount = 0;
-                }
-                else if (deathBlock != Block.water)
-                {
-                    deathCount = 0;
+                    if (deathCount > level.fall && deathBlock == Block.air)
+                    {
+                        HandleDeath(deathBlock);
+                        deathCount = 0;
+                    }
+                    else if (deathBlock != Block.water)
+                    {
+                        deathCount = 0;
+                    }
                 }
             }
 
@@ -1753,48 +1787,49 @@ cliprot = rot;
                     }
                     else if (b1 == Block.air_portal || b1 == Block.water_portal || b1 == Block.lava_portal)
                     {
-                        HandlePortal(this, x, (ushort)(y - 1), z, b1);
+                        HandlePortal(this, x, (ushort)((int)y - 1), z, b1);
                     }
 
                     if (b == Block.MsgAir || b == Block.MsgWater || b == Block.MsgLava)
                     {
-                        HandleMsgBlock(x, y, z, b);
+                        HandleMsgBlock(this, x, y, z, b);
                     }
                     else if (b1 == Block.MsgAir || b1 == Block.MsgWater || b1 == Block.MsgLava)
                     {
-                        HandleMsgBlock(x, (ushort)((int)y - 1), z, b1);
+                        HandleMsgBlock(this, x, (ushort)((int)y - 1), z, b1);
                     }
                     /*else if (b1 == Block.flagbase)
-                    {
-                        if (team != null)
-                        {
-                            y = (ushort)(y - 1);
-                            foreach (Team workTeam in level.ctfgame.teams)
-                            {
-                                if (workTeam.flagLocation[0] == x && workTeam.flagLocation[1] == y && workTeam.flagLocation[2] == z)
-                                {
-                                    if (workTeam == team)
-                                    {
-                                        if (!workTeam.flagishome)
-                                        {
-                                            //level.ctfgame.ReturnFlag(this, workTeam, true);
-                                        }
-                                        else
-                                        {
-                                            if (carryingFlag)
-                                            {
-                                                level.ctfgame.CaptureFlag(this, workTeam, hasflag);
-                                            }
-                                        }
-                                    }
-                                    else
-                                    {
-                                    level.ctfgame.GrabFlag(this, workTeam);
-                                    }
-                                }
-                            }
-                        }
-                    }*/
+{
+if (team != null)
+{
+y = (ushort)(y - 1);
+foreach (Team workTeam in level.ctfgame.teams)
+{
+if (workTeam.flagLocation[0] == x && workTeam.flagLocation[1] == y && workTeam.flagLocation[2] == z)
+{
+if (workTeam == team)
+{
+if (!workTeam.flagishome)
+{
+// level.ctfgame.ReturnFlag(this, workTeam, true);
+}
+else
+{
+if (carryingFlag)
+{
+level.ctfgame.CaptureFlag(this, workTeam, hasflag);
+}
+}
+}
+else
+{
+level.ctfgame.GrabFlag(this, workTeam);
+}
+}
+
+}
+}
+}*/
                 }
             }
             if ((b == Block.tntexplosion || b1 == Block.tntexplosion) && PlayingTntWars) { }
@@ -1891,15 +1926,55 @@ cliprot = rot;
             }
         }
 
-        void HandleChat()
+        /* void HandleFly(Player p, ushort x, ushort y, ushort z) {
+FlyPos pos;
+
+ushort xx; ushort yy; ushort zz;
+
+TempFly.Clear();
+
+if (!flyGlass) y = (ushort)(y + 1);
+
+for (yy = y; yy >= (ushort)(y - 1); --yy)
+for (xx = (ushort)(x - 2); xx <= (ushort)(x + 2); ++xx)
+for (zz = (ushort)(z - 2); zz <= (ushort)(z + 2); ++zz)
+if (p.level.GetTile(xx, yy, zz) == Block.air) {
+pos.x = xx; pos.y = yy; pos.z = zz;
+TempFly.Add(pos);
+}
+
+FlyBuffer.ForEach(delegate(FlyPos pos2) {
+try { if (!TempFly.Contains(pos2)) SendBlockchange(pos2.x, pos2.y, pos2.z, Block.air); } catch { }
+});
+
+FlyBuffer.Clear();
+
+TempFly.ForEach(delegate(FlyPos pos3){
+FlyBuffer.Add(pos3);
+});
+
+if (flyGlass) {
+FlyBuffer.ForEach(delegate(FlyPos pos1) {
+try { SendBlockchange(pos1.x, pos1.y, pos1.z, Block.glass); } catch { }
+});
+} else {
+FlyBuffer.ForEach(delegate(FlyPos pos1) {
+try { SendBlockchange(pos1.x, pos1.y, pos1.z, Block.waterstill); } catch { }
+});
+}
+} */
+
+        void HandleChat(byte[] message)
         {
             try
             {
                 if (!loggedIn) return;
 
                 //byte[] message = (byte[])m;
-                Reader.ReadByte();
-                string text = ReadString();
+                string text = enc.GetString(message, 1, 64).Trim();
+                // removing nulls (matters for the /womid messages)
+                text = text.Trim('\0');
+
                 // handles the /womid client message, which displays the WoM version
                 if (text.Truncate(6) == "/womid")
                 {
@@ -1926,23 +2001,26 @@ cliprot = rot;
                     SendMessage("Message appended!");
                     return;
                 }
-                if (text.EndsWith("<"))
+                else if (text.EndsWith("<"))
                 {
                     storedMessage += text.Replace("<", "|<|");
                     SendMessage("Message appended!");
                     return;
                 }
-                if (text.Contains("%/"))//This causes all players to crash!
+                else if (text.Contains("%/"))//This causes all players to crash!
                 {
                     Player.SendMessage(this, "You're not allowed to send that message!");
                     return;
                 }
 
                 text = Regex.Replace(text, @"\s\s+", " ");
-                if (text.Any(ch => ch < 32 || ch >= 127 || ch == '&'))
+                foreach (char ch in text)
                 {
-                    Kick("Illegal character in chat message!");
-                    return;
+                    if (ch < 32 || ch >= 127 || ch == '&')
+                    {
+                        Kick("Illegal character in chat message!");
+                        return;
+                    }
                 }
                 if (text.Length == 0)
                     return;
@@ -2171,19 +2249,19 @@ Player.SendMessage(p, "(" + team.teamstring + ") " + this.color + this.name + ":
 }
 return;
 }*/
-                if (joker)
+                if (this.joker)
                 {
                     if (File.Exists("text/joker.txt"))
                     {
                         Server.s.Log("<JOKER>: " + this.name + ": " + text);
-                        GlobalMessageOps(Server.DefaultColor + "<&aJ&bO&cK&5E&9R" + Server.DefaultColor + ">: " + this.color + this.name + ":&f " + text);
+                        Player.GlobalMessageOps(Server.DefaultColor + "<&aJ&bO&cK&5E&9R" + Server.DefaultColor + ">: " + this.color + this.name + ":&f " + text);
                         FileInfo jokertxt = new FileInfo("text/joker.txt");
                         StreamReader stRead = jokertxt.OpenText();
                         List<string> lines = new List<string>();
                         Random rnd = new Random();
                         int i = 0;
 
-                        while (stRead.Peek() != -1)
+                        while (!(stRead.Peek() == -1))
                             lines.Add(stRead.ReadLine());
 
                         stRead.Close();
@@ -2201,7 +2279,7 @@ return;
                 }
 
                 //chatroom stuff
-                if (Chatroom != null)
+                if (this.Chatroom != null)
                 {
                     ChatRoom(this, text, true, this.Chatroom);
                     return;
@@ -2421,7 +2499,23 @@ return;
                         }
                         try
                         {
-
+                            /*if (sendcommanddata)
+                            {
+                                new Thread(() =>
+                                {
+                                    using (WebClient wc = new WebClient())
+                                    {
+                                        try
+                                        {
+                                            wc.DownloadString("http://mcforge.bemacizedgaming.com/cmdusage.php?cmd=" + command.name);
+                                        }
+                                        catch
+                                        {
+                                            Server.s.Log("The command data sending failed! If this happens often you should turn it off.");
+                                        }
+                                    }
+                                }).Start();
+                            }*/
                             // Commands to not count into database. This line doesn't count "/review next" if no players are waiting for review.
                             if (!(cmd.ToLower() == "review" & message == "next" & Server.reviewlist.Count == 0))
                             {
@@ -2594,7 +2688,7 @@ if (tries > 2)
 Disconnect();
 else goto retry;
 }*/
-            catch (SocketException)
+            catch (SocketException e)
             {
                 buffer = null;
                 Disconnect();
@@ -3722,7 +3816,7 @@ changed |= 4;*/
                 Server.s.Log("Socket was shutdown for " + this.name ?? this.ip);
 #endif
             }
-            catch (Exception)
+            catch (Exception e)
             {
 #if DEBUG
                     Exception ex = new Exception("Failed to shutdown socket for " + this.name ?? this.ip, e);
@@ -3737,7 +3831,7 @@ changed |= 4;*/
                 Server.s.Log("Socket was closed for " + this.name ?? this.ip);
 #endif
             }
-            catch (Exception)
+            catch (Exception e)
             {
 #if DEBUG
                     Exception ex = new Exception("Failed to close socket for " + this.name ?? this.ip, e);

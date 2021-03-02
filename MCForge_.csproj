@@ -100,19 +100,13 @@
     <Compile Include="Commands\CmdSearch.cs" />
     <Compile Include="Commands\CmdTntWars.cs" />
     <Compile Include="Commands\CommandKeywords.cs" />
-    <Compile Include="Games\CTF\Setup.cs" />
-    <Compile Include="Games\TntWarsGame.cs" />
+    <Compile Include="GUI\Games\CTF\Setup.cs" />
+    <Compile Include="GUI\Games\TntWarsGame.cs" />
     <Compile Include="GUI\LavaMapSubmit.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="GUI\LavaMapSubmit.Designer.cs">
       <DependentUpon>LavaMapSubmit.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\MCForgeAccountSetup.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\MCForgeAccountSetup.Designer.cs">
-      <DependentUpon>MCForgeAccountSetup.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\Textures.cs">
       <SubType>Form</SubType>
@@ -141,9 +135,11 @@
     <Compile Include="Levels\Texture_Settings.cs" />
     <Compile Include="MCForgeAccount.cs" />
     <Compile Include="Player\Packet.cs" />
+    <Compile Include="Plugins\GroupEvents\OnGroupLoadedEvent.cs" />
     <Compile Include="Plugins\GroupEvents\OnGroupLoadEvent.cs" />
     <Compile Include="Plugins\GroupEvents\OnGroupSaveEvent.cs" />
     <Compile Include="Plugins\GroupEvents\OnPlayerRankSetEvent.cs" />
+    <Compile Include="Plugins\LevelEvents\OnLevelLoadedEvent.cs" />
     <Compile Include="Plugins\LevelEvents\OnLevelLoadEvent.cs" />
     <Compile Include="Plugins\LevelEvents\OnLevelSaveEvent.cs" />
     <Compile Include="Plugins\LevelEvents\OnLevelUnloadEvent.cs" />
@@ -156,7 +152,11 @@
     <Compile Include="Plugins\PlayerEvents\OnPlayerCommandEvent.cs" />
     <Compile Include="Plugins\PlayerEvents\OnPlayerConnectEvent.cs" />
     <Compile Include="Plugins\PlayerEvents\OnPlayerDeathEvent.cs" />
+    <Compile Include="Plugins\PlayerEvents\OnPlayerDisconnectEvent.cs" />
     <Compile Include="Plugins\PlayerEvents\PlayerMoveEvent.cs" />
+    <Compile Include="Plugins\ServerEvents\OnConsoleCommandEvent.cs" />
+    <Compile Include="Plugins\ServerEvents\OnServerErrorEvent.cs" />
+    <Compile Include="Plugins\ServerEvents\OnServerLogEvent.cs" />
     <Compile Include="Plugins\Utils\Priority.cs" />
     <Compile Include="Sharkbite.Thresher\ChannelModeInfo.cs" />
     <Compile Include="Sharkbite.Thresher\CommandBuilder.cs" />
@@ -325,10 +325,10 @@
     <Compile Include="Commands\CmdPLoad.cs" />
     <Compile Include="Commands\CmdPUnload.cs" />
     <Compile Include="Commands\CommandOtherPerms.cs" />
-    <Compile Include="Games\CTF\Auto_CTF.cs" />
+    <Compile Include="GUI\Games\CTF\Auto_CTF.cs" />
     <Compile Include="Edit.cs" />
     <Compile Include="GlobalChatBot.cs" />
-    <Compile Include="Games\CountdownGame.cs" />
+    <Compile Include="GUI\Games\CountdownGame.cs" />
     <Compile Include="Economy.cs" />
     <Compile Include="ForgeBot.cs" />
     <Compile Include="GUI\EditText.cs">
@@ -344,7 +344,7 @@
       <DependentUpon>LavaMapBrowser.cs</DependentUpon>
     </Compile>
     <Compile Include="Heartbeat\WOMBeat.cs" />
-    <Compile Include="Games\LavaSurvival.cs" />
+    <Compile Include="GUI\Games\LavaSurvival.cs" />
     <Compile Include="Levels\BlockQueue.cs" />
     <Compile Include="MySQLTransactionHelper.cs" />
     <Compile Include="OmniBan.cs" />
@@ -572,7 +572,7 @@
     <Compile Include="Util\Serializer.cs" />
     <Compile Include="VIP.cs" />
     <Compile Include="Warp.cs" />
-    <Compile Include="Games\ZombieGame.cs" />
+    <Compile Include="GUI\Games\ZombieGame.cs" />
     <EmbeddedResource Include="GUI\EditText.resx">
       <DependentUpon>EditText.cs</DependentUpon>
     </EmbeddedResource>
@@ -581,9 +581,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\LavaMapSubmit.resx">
       <DependentUpon>LavaMapSubmit.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\MCForgeAccountSetup.resx">
-      <DependentUpon>MCForgeAccountSetup.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\Textures.resx">
       <DependentUpon>Textures.cs</DependentUpon>
